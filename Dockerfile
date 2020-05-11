@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang
+FROM golang:1.14.2 AS build
 WORKDIR /app
 
 # CFG is the path to your configuration file
 ARG CFG
-# TOKEN is your GitHub developer token
-ARG TOKEN
 
 # Set an env var that matches your github repo name, replace treeder/dockergo here with your repo name
 ENV SRC_DIR=/src/tparty
@@ -30,17 +28,18 @@ COPY cmd ${SRC_DIR}/cmd/
 COPY pkg ${SRC_DIR}/pkg/
 
 # Build the binary
-RUN cd $SRC_DIR && go mod download
 RUN cd $SRC_DIR/cmd/server && go build -o main
 RUN cp $SRC_DIR/cmd/server/main /app/
+
+FROM gcr.io/distroless/base:nonroot
+
+# Copy the binary from the build image
+COPY --from=build /app/main /app/main
 
 # Setup our deployment
 COPY site /app/site/
 COPY third_party /app/third_party/
-COPY $CFG /app/config.yaml
-
-# Setup an initialization cache for warm start-up
-RUN env TOKEN=$TOKEN /app/main --config /app/config.yaml --site_dir /app/site --dry_run
+COPY $CFG /app/config/config.yaml
 
 # Run the server at a reasonable refresh rate
-CMD ["/app/main", "--max_list_age=120s", "--max_refresh_age=20m", "--config=/app/config.yaml", "--site_dir=/app/site", "--3p_dir=/app/third_party"]
+CMD ["/app/main", "--max_list_age=120s", "--max_refresh_age=20m", "--config=/app/config/config.yaml", "--site_dir=/app/site", "--3p_dir=/app/third_party"]
